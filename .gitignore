@@ -11,6 +11,9 @@
 *.user
 *.userosscache
 *.sln.docstates
+KSPCF-memory-leaks-summary.txt
+KSPCF-memory-leaks-raw.txt
+GameData/RealAntennas/Plugins/
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs

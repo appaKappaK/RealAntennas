@@ -16,6 +16,8 @@ namespace RealAntennas
         readonly List<CommNet.ModuleProbeControlPoint> probeControlPoints = new List<CommNet.ModuleProbeControlPoint>();
         readonly List<ModuleDeployablePart> deployableParts = new List<ModuleDeployablePart>();
         private PartResourceDefinition electricChargeDef;
+        private bool networkInitializedSubscribed;
+        private bool mapFocusSubscribed;
 
         [KSPField(isPersistant = true)] public bool powered = true;
 
@@ -75,9 +77,9 @@ namespace RealAntennas
                 networkInitialised = false;
                 if (CommNet.CommNetNetwork.Initialized)
                     OnNetworkInitialized();
-                GameEvents.CommNet.OnNetworkInitialized.Add(OnNetworkInitialized);
+                SubscribeNetworkInitialized();
                 if (HighLogic.LoadedScene == GameScenes.TRACKSTATION)
-                    GameEvents.onPlanetariumTargetChanged.Add(OnMapFocusChange);
+                    SubscribeMapFocusChange();
                 RefreshDeployablePartEventHandlers();
 
                 overridePostUpdate = true;
@@ -117,13 +119,14 @@ namespace RealAntennas
 
             foreach (Part p in vessel.parts)
             {
-                List<PartModule> modules = p.FindModulesImplementingReadOnly<ModuleDeployablePart>();
-                foreach (ModuleDeployablePart mdp in modules)
-                {
-                    mdp.OnMoving.Add(OnMoving);
-                    mdp.OnStop.Add(OnStop);
-                    deployableParts.Add(mdp);
-                }
+                if (p.FindModuleImplementingFast<ModuleRealAntenna>() == null) continue;
+                if (!(p.FindModuleImplementingFast<ModuleDeployableAntenna>() is ModuleDeployableAntenna mda)) continue;
+
+                mda.OnMoving.Remove(OnMoving);
+                mda.OnStop.Remove(OnStop);
+                mda.OnMoving.Add(OnMoving);
+                mda.OnStop.Add(OnStop);
+                deployableParts.Add(mda);
             }
         }
 
@@ -131,18 +134,46 @@ namespace RealAntennas
         {
             foreach (ModuleDeployablePart mdp in deployableParts)
             {
-                if (mdp == null) continue;
+                if (ReferenceEquals(mdp, null)) continue;
                 mdp.OnMoving.Remove(OnMoving);
                 mdp.OnStop.Remove(OnStop);
             }
             deployableParts.Clear();
         }
 
+        private void SubscribeNetworkInitialized()
+        {
+            GameEvents.CommNet.OnNetworkInitialized.Remove(OnNetworkInitialized);
+            GameEvents.CommNet.OnNetworkInitialized.Add(OnNetworkInitialized);
+            networkInitializedSubscribed = true;
+        }
+
+        private void UnsubscribeNetworkInitialized()
+        {
+            if (!networkInitializedSubscribed) return;
+            GameEvents.CommNet.OnNetworkInitialized.Remove(OnNetworkInitialized);
+            networkInitializedSubscribed = false;
+        }
+
+        private void SubscribeMapFocusChange()
+        {
+            GameEvents.onPlanetariumTargetChanged.Remove(OnMapFocusChange);
+            GameEvents.onPlanetariumTargetChanged.Add(OnMapFocusChange);
+            mapFocusSubscribed = true;
+        }
+
+        private void UnsubscribeMapFocusChange()
+        {
+            if (!mapFocusSubscribed) return;
+            GameEvents.onPlanetariumTargetChanged.Remove(OnMapFocusChange);
+            mapFocusSubscribed = false;
+        }
+
         protected override void OnDestroy()
         {
             RemoveDeployablePartEventHandlers();
-            GameEvents.CommNet.OnNetworkInitialized.Remove(OnNetworkInitialized);
-            GameEvents.onPlanetariumTargetChanged.Remove(OnMapFocusChange);
+            UnsubscribeNetworkInitialized();
+            UnsubscribeMapFocusChange();
             base.OnDestroy();
             comm?.Net.Remove(comm);
             comm = null;
