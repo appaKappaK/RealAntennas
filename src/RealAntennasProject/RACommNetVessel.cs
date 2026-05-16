@@ -14,6 +14,7 @@ namespace RealAntennas
         readonly List<RealAntenna> antennaList = new List<RealAntenna>();
         readonly List<RealAntenna> inactiveAntennas = new List<RealAntenna>();
         readonly List<CommNet.ModuleProbeControlPoint> probeControlPoints = new List<CommNet.ModuleProbeControlPoint>();
+        readonly List<ModuleDeployablePart> deployableParts = new List<ModuleDeployablePart>();
         private PartResourceDefinition electricChargeDef;
 
         [KSPField(isPersistant = true)] public bool powered = true;
@@ -77,15 +78,7 @@ namespace RealAntennas
                 GameEvents.CommNet.OnNetworkInitialized.Add(OnNetworkInitialized);
                 if (HighLogic.LoadedScene == GameScenes.TRACKSTATION)
                     GameEvents.onPlanetariumTargetChanged.Add(OnMapFocusChange);
-                foreach (Part p in vessel.parts)
-                {
-                    List<PartModule> modules = p.FindModulesImplementingReadOnly<ModuleDeployablePart>();
-                    foreach (ModuleDeployablePart mdp in modules)
-                    {
-                        mdp.OnMoving.Add(OnMoving);
-                        mdp.OnStop.Add(OnStop);
-                    }
-                }
+                RefreshDeployablePartEventHandlers();
 
                 overridePostUpdate = true;
                 electricChargeDef = PartResourceLibrary.Instance.GetDefinition("ElectricCharge");
@@ -107,6 +100,7 @@ namespace RealAntennas
                         DiscoverAntennas();
                     }
                     DiscoverProbeControlPoints();
+                    RefreshDeployablePartEventHandlers();
                     Profiler.EndSample();
                 }
                 UpdateControlState();
@@ -116,8 +110,37 @@ namespace RealAntennas
         private void OnMoving(float f1, float f2) => DiscoverAntennas();
         private void OnStop(float f1) => DiscoverAntennas();
 
+        private void RefreshDeployablePartEventHandlers()
+        {
+            RemoveDeployablePartEventHandlers();
+            if (!vessel) return;
+
+            foreach (Part p in vessel.parts)
+            {
+                List<PartModule> modules = p.FindModulesImplementingReadOnly<ModuleDeployablePart>();
+                foreach (ModuleDeployablePart mdp in modules)
+                {
+                    mdp.OnMoving.Add(OnMoving);
+                    mdp.OnStop.Add(OnStop);
+                    deployableParts.Add(mdp);
+                }
+            }
+        }
+
+        private void RemoveDeployablePartEventHandlers()
+        {
+            foreach (ModuleDeployablePart mdp in deployableParts)
+            {
+                if (mdp == null) continue;
+                mdp.OnMoving.Remove(OnMoving);
+                mdp.OnStop.Remove(OnStop);
+            }
+            deployableParts.Clear();
+        }
+
         protected override void OnDestroy()
         {
+            RemoveDeployablePartEventHandlers();
             GameEvents.CommNet.OnNetworkInitialized.Remove(OnNetworkInitialized);
             GameEvents.onPlanetariumTargetChanged.Remove(OnMapFocusChange);
             base.OnDestroy();
